@@ -305,8 +305,8 @@ def main():
     ) 
     print('length dataset', len(test_dataset))
     test_loader = DataLoader(test_dataset, batch_size=40, num_workers=5, pin_memory=True)
-    #loss, mAP = feedforward(test_loader, model, YOLOLoss(), scaled_anchors.to(GPU_Device()), len(class_labels))
-    #print(f"Test mAP: {mAP:.3f} | Test Loss: {loss:.3f}")
+    loss, mAP = feedforward(test_loader, model, YOLOLoss(), scaled_anchors.to(GPU_Device()), len(class_labels))
+    print(f"Test mAP: {mAP:.3f} | Test Loss: {loss:.3f}")
     
     # visualize test examples
     for i in range(6):
