@@ -289,7 +289,7 @@ def main():
         model.load_state_dict(torch.load(f'{type(model).__name__}.pth'))
         
     # model training
-    #model_training(train_loader, val_loader, model, YOLOLoss(), scaled_anchors.to(GPU_Device()), len(class_labels))
+    model_training(train_loader, val_loader, model, YOLOLoss(), scaled_anchors.to(GPU_Device()), len(class_labels))
     
     # load the best model
     model.load_state_dict(torch.load(f'{type(model).__name__}.pth'))
