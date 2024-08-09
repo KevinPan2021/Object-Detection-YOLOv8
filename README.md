@@ -34,7 +34,7 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 - `class_ind_pair.pkl`
 
 ### Dataset Structure:
-
+```bash
 ├── MS-COCO
     ├── annotations_test2017
         ├── image_info_test2017.json
@@ -55,6 +55,7 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
     ├── val2017
         ├── 000000000001.jpg
         ├── 000000000002.jpg
+```
 
 ### Credits:
 
