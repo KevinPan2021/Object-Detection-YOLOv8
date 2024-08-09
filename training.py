@@ -1,206 +1,212 @@
 import torch
 from tqdm import tqdm
-import torch.optim as optim 
-import os
-import sys
-from collections import Counter
 from torchmetrics.detection import MeanAveragePrecision
 
-from model_YOLOv3 import convert_cells_to_bboxes, nms, iou
+from yolo_v8 import ComputeLoss, non_max_suppression, wh2xy
 from visualization import plot_training_curves
-
+from torch.cuda.amp import GradScaler, autocast
 
 
 # compute the mean average precision score
-def mAP(pred, target, scaled_anchors, num_classes):
-    batch_size = pred[0].shape[0]
-    batch_mAP = 0.0
+# pred shape: torch.Size([batch_size, 84, 8400])
+# target shape: torch.Size([num_bbox, 6])
+@torch.no_grad()
+def mAP(pred, target, scale):
+    # apply nms
+    # pred shape -> batch_size * torch.Size([(num_bbox, 6)])
+    pred = non_max_suppression(pred, 0.1, 0.65, max_det=100, max_nms=2000)
+    
+    # rescale target from [0, 1] to [0, scale]
+    target[:, 2:] *= scale
+
+    # define torch lightening mAP metric
+    metric = MeanAveragePrecision()
+    metric.warn_on_many_detections = False
     
     # iterate through batch_size
-    for i in range(batch_size):
-        # convert pred and target to bounding boxes
-        target_bbox = [] 
-        for j in range(len(target)): 
-            target_bbox += convert_cells_to_bboxes(target[j][[i],...], scaled_anchors[j], is_predictions=False)[0] 
+    for i in range(len(pred)):
+        target_data = target[target[:, 0] == i, 1:]
+        pred_data = pred[i]
         
-        pred_bbox = [] 
-        for j in range(len(pred)): # 3 scales
-            pred_bbox += convert_cells_to_bboxes(pred[j][[i],...], scaled_anchors[j])[0]
+        # convert target_data from wh to xy
+        target_data[:, 1:] = wh2xy(target_data[:, 1:])
         
-        # apply non-maximum suppresion
-        target_bbox = nms(target_bbox, iou_threshold=1, confidence_threshold=0.6) 
-        pred_bbox = nms(pred_bbox, iou_threshold=0.45, confidence_threshold=0.6)
+        targets = [{
+            'boxes':target_data[:, 1:], 
+            'labels':target_data[:,0].long()
+        }]
+        preds = [{
+            'boxes':pred_data[:, :4], 
+            'scores':pred_data[:, 4], 
+            'labels':pred_data[:, -1].long()
+        }]
         
-        # construct the targets and preds for MeanAveragePrecision
-        target_boxes, target_labels = [], []
-        pred_boxes, pred_scores, pred_labels = [], [], []
-        
-        for bbox in target_bbox:
-            class_ind, confidence, a, b, c, d = bbox
-            target_boxes.append([a-c/2, b-d/2, a+c/2, b+d/2])
-            target_labels.append(class_ind)
-        
-        for bbox in pred_bbox:
-            class_ind, confidence, a, b, c, d = bbox
-            pred_boxes.append([a-c/2, b-d/2, a+c/2, b+d/2])
-            pred_scores.append(confidence) # has no effect
-            pred_labels.append(class_ind)
-        
-        targets = [{'boxes':torch.tensor(target_boxes), 'labels':torch.tensor(target_labels, dtype=torch.long)}]
-        preds = [{'boxes':torch.tensor(pred_boxes), 'scores':torch.tensor(pred_scores), 'labels':torch.tensor(pred_labels, dtype=torch.long)}]
-        
-        metric = MeanAveragePrecision()
         metric.update(preds, targets)
-
-        # append to total
-        batch_mAP += metric.compute()['map'].numpy()
-    
-    # averaging over all batch_size
-    batch_mAP /= batch_size
-    
+        
+    batch_mAP = metric.compute()['map']
+    metric.reset()
     return batch_mAP
 
 
 
-# calculate the loss and mAP
-def feedforward(data_loader, model, loss_fn, scaled_anchors, num_classes):
+@torch.no_grad()
+def feedforward(data_loader, model, mAP_skip=1):
     model.eval()
-    device = scaled_anchors.device
+    
+    criterion = ComputeLoss(model)
+    device = next(model.parameters()).device
     epoch_loss = 0.0
     epoch_mAP = 0.0
     
-    #with torch.autocast(device_type='mps', dtype=torch.bfloat16):
-    with torch.no_grad():
-        # Iterating over the training data
-        for _, (x, y) in enumerate(tqdm(data_loader)):
-            # move data to device
-            x = x.to(device)
-            y0, y1, y2 = y[0].to(device), y[1].to(device), y[2].to(device)
-    
-            # Getting the model predictions
-            outputs = model(x)
-            # Calculating the loss at each scale
-            loss = (loss_fn(outputs[0], y0, scaled_anchors[0])
-                    + loss_fn(outputs[1], y1, scaled_anchors[1])
-                    + loss_fn(outputs[2], y2, scaled_anchors[2]))
-    
-            # Add the loss to the list
-            epoch_loss += loss.item()
+    with tqdm(total=len(data_loader)) as pbar:
+        # Iterate over the dataset
+       for i, (X, Y) in enumerate(data_loader):
+           # move to device
+           X = X.to(device)
+           Y = Y.to(device)
             
-            # compute mAP
-            epoch_mAP += mAP(outputs, y, scaled_anchors, num_classes)
-    
+           # Forward
+           with autocast(dtype=torch.float16):
+               output, box = model(X)  # forward
+               loss_score = criterion(output, Y)
+               
+               map_score = torch.tensor([0])
+               if i % mAP_skip == 0: # only compute mAP when necessary
+                   map_score = mAP(box, Y, X.shape[-1])
+               
+           # Add the loss to the list
+           epoch_loss += loss_score.item()
+           
+           # compute mAP
+           epoch_mAP += map_score.item()
+           
+           # Update tqdm description with loss and accuracy
+           pbar.set_postfix({
+                'Loss': f'{epoch_loss/(i+1):.3f}', 
+                'mAP': f'{epoch_mAP/(i+1)*mAP_skip:.3f}'
+           })
+           pbar.update(1)
+           
+           torch.cuda.empty_cache()
+           
     # averaging over all batches
     epoch_loss /= len(data_loader)
-    epoch_mAP /= len(data_loader)
+    epoch_mAP /= len(data_loader) / mAP_skip
     
-    return epoch_loss, epoch_mAP
-        
-            
-        
-# calculate the loss and mAP, gradient update
-def backpropagation(data_loader, model, loss_fn, scaled_anchors, optimizer, num_classes):
+    return epoch_mAP, epoch_loss
+
+
+
+def backpropagation(data_loader, model, optimizer, scaler, mAP_skip=1):
     model.train()
-    device = scaled_anchors.device
+    
+    criterion = ComputeLoss(model)
+    device = next(model.parameters()).device
     epoch_loss = 0.0
     epoch_mAP = 0.0
+    
+    with tqdm(total=len(data_loader)) as pbar:
+        # Iterate over the dataset
+       for i, (X, Y) in enumerate(data_loader):
+           # move to device
+           X = X.to(device)
+           Y = Y.to(device)
 
-    # Iterating over the training data
-    for _, (x, y) in enumerate(tqdm(data_loader)):
-        # move data to device
-        x = x.to(device)
-        y0, y1, y2 = y[0].to(device), y[1].to(device), y[2].to(device)
-
-        # Getting the model predictions
-        outputs = model(x)
-        # Calculating the loss at each scale
-        loss = (loss_fn(outputs[0], y0, scaled_anchors[0])
-                + loss_fn(outputs[1], y1, scaled_anchors[1])
-                + loss_fn(outputs[2], y2, scaled_anchors[2]))
-
-        # Add the loss to the list
-        epoch_loss += loss.item()
-        
-        # compute mAP
-        epoch_mAP += mAP(outputs, y, scaled_anchors, num_classes)
-
-        # Reset gradients
-        optimizer.zero_grad()
-
-        # Backpropagate the loss
-        loss.backward()
-
-        # Optimization step
-        optimizer.step()
-        
+           # Forward
+           with autocast(dtype=torch.float16):
+               output, box = model(X)  # forward
+               loss_score = criterion(output, Y)
+               
+               map_score = torch.tensor([0])
+               if i % mAP_skip == 0: # only compute mAP when necessary
+                   map_score = mAP(box, Y, X.shape[-1])
+               
+           # Add the loss to the list
+           epoch_loss += loss_score.item()
+           
+           # compute mAP
+           epoch_mAP += map_score.item()
+           
+           # Reset gradients
+           optimizer.zero_grad()
+           
+           # Backpropagate the loss
+           scaler.scale(loss_score).backward()
+           
+           # Optimization step
+           scaler.step(optimizer)
+           
+           # Updates the scale for next iteration.
+           scaler.update()
+           
+           # Update tqdm description with loss and accuracy
+           pbar.set_postfix({
+                'Loss': f'{epoch_loss/(i+1):.3f}', 
+                'mAP': f'{epoch_mAP/(i+1)*mAP_skip:.3f}'
+           })
+           pbar.update(1)
+           
+           torch.cuda.empty_cache()
+           
+    # averaging over all batches
     epoch_loss /= len(data_loader)
-    epoch_mAP /= len(data_loader)
-        
-    return epoch_loss, epoch_mAP
+    epoch_mAP /= len(data_loader) / mAP_skip
+    
+    return epoch_mAP, epoch_loss
 
 
 
-
-# Define the train function to train the model
-def model_training(train_loader, valid_loader, model, loss_fn, scaled_anchors, num_classes):
+def model_training(train_loader, valid_loader, model):
+    # Define hyperparameters
     n_epochs = 100
     # Learning rate for training
     learning_rate = 1e-4
     # l2 regularization
     weight_decay = 5e-4
-    # Defining the optimizer
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
-    if f'{type(model).__name__.lower()}_optimizer.pth' in os.listdir():
-        optimizer.load_state_dict(torch.load(f'{type(model).__name__}_optimizer.pth'))
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = learning_rate
-
-    # append the results of model with no training
-    train_loss, train_mAP = feedforward(train_loader, model, loss_fn, scaled_anchors, num_classes)
-    valid_loss, valid_mAP = feedforward(valid_loader, model, loss_fn, scaled_anchors, num_classes)
-    print(f"Epoch 0/{n_epochs} | Train mAP: {train_mAP:.3f} | Train Loss: {train_loss:.3f} | Valid mAP: {valid_mAP:.3f} | Valid Loss: {valid_loss:.3f}")
     
-    # create lists to keep track
-    train_losses = [train_loss]
-    valid_losses = [valid_loss]
-    train_mAPs = [train_mAP]
-    valid_mAPs = [valid_mAP]
+    optimizer = torch.optim.Adam(model.parameters(), weight_decay=weight_decay, lr=learning_rate)
+    
+    # Creates a GradScaler once at the beginning of training.
+    scaler = GradScaler()
+
+    # calculate the initial statistics (random)
+    print(f"Epoch {0}/{n_epochs}")
+    # use large mAP_skip to reduce time
+    train_mAP, train_loss = feedforward(train_loader, model, mAP_skip=128)
+    valid_mAP, valid_loss = feedforward(valid_loader, model, mAP_skip=16)
+    
+    train_loss_curve, train_mAP_curve = [train_loss], [train_mAP]
+    valid_loss_curve, valid_mAP_curve = [valid_loss], [valid_mAP]
+    
     
     # Early Stopping criteria
     patience = 3
     not_improved = 0
     best_valid_loss = valid_loss
     threshold = 0.01
-
+    
+    # Training loop
     for epoch in range(n_epochs):
-        train_loss, train_mAP = backpropagation(train_loader, model, loss_fn, scaled_anchors, optimizer, num_classes)
-        valid_loss, valid_mAP = feedforward(valid_loader, model, loss_fn, scaled_anchors, num_classes)
-        
-        train_losses.append(train_loss)
-        valid_losses.append(valid_loss)
-        train_mAPs.append(train_mAP)
-        valid_mAPs.append(valid_mAP)
-        
-        print(f"Epoch {epoch+1}/{n_epochs} | Train mAP: {train_mAP:.3f} | Train Loss: {train_loss:.3f} | Valid mAP: {valid_mAP:.3f} | Valid Loss: {valid_loss:.3f}")
-        
-        # evaluate the current performance
-        # strictly better
-        if valid_loss < best_valid_loss:
+        print(f"Epoch {epoch+1}/{n_epochs}")
+        train_mAP, train_loss = backpropagation(train_loader, model, optimizer, scaler, mAP_skip=16)
+        valid_mAP, valid_loss = feedforward(valid_loader, model, mAP_skip=8)
+
+        train_loss_curve.append(train_loss)
+        train_mAP_curve.append(train_mAP)
+        valid_loss_curve.append(valid_loss)
+        valid_mAP_curve.append(valid_mAP)
+
+        # evaluate the current preformance
+        if valid_loss < best_valid_loss + threshold:
             best_valid_loss = valid_loss
             not_improved = 0
             # save the best model based on validation loss
-            torch.save(model.state_dict(), f'{type(model).__name__}.pth')
-            # also save the optimizer state for future training
-            torch.save(optimizer.state_dict(), f'{type(model).__name__}_optimizer.pth')
-
-        # becomes worse
-        elif valid_loss > best_valid_loss + threshold:
+            model.half()
+            torch.save(model.state_dict(), model.name() + '.pth')
+        else:
             not_improved += 1
             if not_improved >= patience:
                 print('Early Stopping Activated')
                 break
             
-    plot_training_curves(train_mAPs, train_losses, valid_mAPs, valid_losses)
-            
-            
+    plot_training_curves(train_mAP_curve, train_loss_curve, valid_mAP_curve, valid_loss_curve)
