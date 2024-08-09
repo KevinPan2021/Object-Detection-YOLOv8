@@ -7,19 +7,19 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 
 ### Build: 
 
-	- **CPU:** Intel i9-13900H (14 cores)
-	- **GPU:** NVIDIA RTX 4060 (VRAM 8 GB)
-	- **RAM:** 32 GB
+- **CPU:** Intel i9-13900H (14 cores)
+- **GPU:** NVIDIA RTX 4060 (VRAM 8 GB)
+- **RAM:** 32 GB
 
 ### Python Packages:
 
-- `pytorch = 2.1.2`
-- `numpy = 1.23.5`
-- `OpenCV = 4.9.0.80`
-- `albumentations = 1.4.6`
-- `matplotlib = 3.7.0`
-- `pandas = 1.5.3`
-- `tqdm = 4.64.1`
+	* pytorch = 2.1.2
+	* numpy = 1.23.5
+	* OpenCV = 4.9.0.80
+	* albumentations = 1.4.6
+	* matplotlib = 3.7.0
+	* pandas = 1.5.3
+	* tqdm = 4.64.1
 
 ### Code Structure:
 
