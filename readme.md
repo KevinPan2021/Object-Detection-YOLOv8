@@ -15,14 +15,12 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 
 ### Python Packages:
 
-	pytorch = 2.1.2
-	numpy = 1.23.5
-	OpenCV = 4.9.0.80
-	albumentations = 1.4.6
-	matplotlib = 3.7.0
-	pandas = 1.5.3
-	tqdm = 4.64.1
-
+	conda install pytorch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 pytorch-cuda=12.1 -c pytorch -c nvidia
+	conda install -c conda-forge opencv==4.6.0
+	conda install -c conda-forge lightning==2.3.2
+	conda install -c conda-forge albumentations==1.3.1
+	conda install -c conda-forge pycocotools==2.0.8
+	conda install -c conda-forge torchmetrics
 
 ### Code Structure:
 
