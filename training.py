@@ -1,16 +1,18 @@
 import torch
 from tqdm import tqdm
 from torchmetrics.detection import MeanAveragePrecision
+from torch.optim.lr_scheduler import LambdaLR
 
 from yolo_v8 import ComputeLoss, non_max_suppression, wh2xy
 from visualization import plot_training_curves
 from torch.cuda.amp import GradScaler, autocast
 
 
+
+@torch.no_grad()
 # compute the mean average precision score
 # pred shape: torch.Size([batch_size, 84, 8400])
 # target shape: torch.Size([num_bbox, 6])
-@torch.no_grad()
 def mAP(pred, target, scale):
     # apply nms
     # pred shape -> batch_size * torch.Size([(num_bbox, 6)])
@@ -47,6 +49,12 @@ def mAP(pred, target, scale):
     metric.reset()
     return batch_mAP
 
+
+# Lambda function for learning rate warm-up
+def lr_lambda(step, warmup_steps):
+    if step < warmup_steps:
+        return step / warmup_steps  # Gradual increase from 0 to 1
+    return 1  # Continue with normal learning rate after warm-up
 
 
 @torch.no_grad()
@@ -97,7 +105,7 @@ def feedforward(data_loader, model, mAP_skip=1):
 
 
 
-def backpropagation(data_loader, model, optimizer, scaler, mAP_skip=1):
+def backpropagation(data_loader, model, optimizer, scaler, scheduler, mAP_skip=1):
     model.train()
     
     criterion = ComputeLoss(model)
@@ -135,6 +143,7 @@ def backpropagation(data_loader, model, optimizer, scaler, mAP_skip=1):
            
            # Optimization step
            scaler.step(optimizer)
+           scheduler.step() 
            
            # Updates the scale for next iteration.
            scaler.update()
@@ -155,41 +164,39 @@ def backpropagation(data_loader, model, optimizer, scaler, mAP_skip=1):
     return epoch_mAP, epoch_loss
 
 
-
+# model training loop
 def model_training(train_loader, valid_loader, model):
     # Define hyperparameters
     n_epochs = 100
+    warmup_steps = 2
+    
     # Learning rate for training
     learning_rate = 1e-4
+    
     # l2 regularization
     weight_decay = 5e-4
     
     optimizer = torch.optim.Adam(model.parameters(), weight_decay=weight_decay, lr=learning_rate)
     
-    # Creates a GradScaler once at the beginning of training.
+    # Create a learning scheduler
+    scheduler = LambdaLR(optimizer, lr_lambda=lambda step: lr_lambda(step, warmup_steps))
+
+    # Creates a GradScaler
     scaler = GradScaler()
 
-    # calculate the initial statistics (random)
-    print(f"Epoch {0}/{n_epochs}")
-    # use large mAP_skip to reduce time
-    train_mAP, train_loss = feedforward(train_loader, model, mAP_skip=128)
-    valid_mAP, valid_loss = feedforward(valid_loader, model, mAP_skip=16)
-    
-    train_loss_curve, train_mAP_curve = [train_loss], [train_mAP]
-    valid_loss_curve, valid_mAP_curve = [valid_loss], [valid_mAP]
-    
-    
     # Early Stopping criteria
     patience = 3
     not_improved = 0
-    best_valid_loss = valid_loss
     threshold = 0.01
+    best_valid_loss = float('inf')
     
     # Training loop
+    train_loss_curve, train_mAP_curve = [], []
+    valid_loss_curve, valid_mAP_curve = [], []
     for epoch in range(n_epochs):
         print(f"Epoch {epoch+1}/{n_epochs}")
-        train_mAP, train_loss = backpropagation(train_loader, model, optimizer, scaler, mAP_skip=16)
-        valid_mAP, valid_loss = feedforward(valid_loader, model, mAP_skip=8)
+        train_mAP, train_loss = backpropagation(train_loader, model, optimizer, scaler, scheduler, mAP_skip=16)
+        valid_mAP, valid_loss = feedforward(valid_loader, model, mAP_skip=2)
 
         train_loss_curve.append(train_loss)
         train_mAP_curve.append(train_mAP)
@@ -197,12 +204,15 @@ def model_training(train_loader, valid_loader, model):
         valid_mAP_curve.append(valid_mAP)
 
         # evaluate the current preformance
-        if valid_loss < best_valid_loss + threshold:
+        if valid_loss - threshold < best_valid_loss:
             best_valid_loss = valid_loss
             not_improved = 0
-            # save the best model based on validation loss
+            
+            # save the best model in float16
             model.half()
             torch.save(model.state_dict(), model.name() + '.pth')
+            model.float()
+            
         else:
             not_improved += 1
             if not_improved >= patience:
@@ -210,3 +220,4 @@ def model_training(train_loader, valid_loader, model):
                 break
             
     plot_training_curves(train_mAP_curve, train_loss_curve, valid_mAP_curve, valid_loss_curve)
+    
