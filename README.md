@@ -5,12 +5,14 @@ http://images.cocodataset.org
 
 
 ### Build: 
+
 	* CPU: Intel i9-13900H (14 cores)
 	* GPU: NIVIDIA RTX 4060 (VRAM 8 GB)
 	* RAM: 32 GB
 
 		
 ### Python Package:
+
 	* pytorch = 2.1.2
 	* numpy = 1.23.5
 	* OpenCV = 4.9.0.80
@@ -21,6 +23,7 @@ http://images.cocodataset.org
 
 
 ### Code Structure:
+
 	* GUI.py (Run to generate GUI)
 	* main.py (Run to train model)
 	* dataset.py
@@ -54,6 +57,7 @@ http://images.cocodataset.org
                 ├── 000000000002.jpg
 
 ### Credits:
+
 	* https://github.com/jahongir7174/YOLOv8-pt
 	* https://github.com/ultralytics/ultralytics
 
