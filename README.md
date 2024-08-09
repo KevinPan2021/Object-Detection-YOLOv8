@@ -13,13 +13,13 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 
 ### Python Packages:
 
-	* pytorch = 2.1.2
-	* numpy = 1.23.5
-	* OpenCV = 4.9.0.80
-	* albumentations = 1.4.6
-	* matplotlib = 3.7.0
-	* pandas = 1.5.3
-	* tqdm = 4.64.1
+	pytorch = 2.1.2
+	numpy = 1.23.5
+	OpenCV = 4.9.0.80
+	albumentations = 1.4.6
+	matplotlib = 3.7.0
+	pandas = 1.5.3
+	tqdm = 4.64.1
 
 ### Code Structure:
 
@@ -59,8 +59,8 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 
 ### Credits:
 
-	* https://github.com/jahongir7174/YOLOv8-pt
-	* https://github.com/ultralytics/ultralytics
+	https://github.com/jahongir7174/YOLOv8-pt
+	https://github.com/ultralytics/ultralytics
 
 
 	
