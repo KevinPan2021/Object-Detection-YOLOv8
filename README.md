@@ -6,11 +6,13 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 - [MS-COCO](http://images.cocodataset.org)
 
 ### Build: 
+
 - **CPU:** Intel i9-13900H (14 cores)
 - **GPU:** NVIDIA RTX 4060 (VRAM 8 GB)
 - **RAM:** 32 GB
 
 ### Python Packages:
+
 - `pytorch = 2.1.2`
 - `numpy = 1.23.5`
 - `OpenCV = 4.9.0.80`
@@ -20,6 +22,7 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 - `tqdm = 4.64.1`
 
 ### Code Structure:
+
 - `GUI.py` (Run to generate GUI)
 - `main.py` (Run to train model)
 - `dataset.py`
@@ -31,7 +34,7 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 - `class_ind_pair.pkl`
 
 ### Dataset Structure:
-```bash
+
 ├── MS-COCO
     ├── annotations_test2017
         ├── image_info_test2017.json
