@@ -23,16 +23,18 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 	conda install -c conda-forge torchmetrics
 
 ### Code Structure:
-
-	GUI.py (Run to generate GUI)
-	main.py (Run to train model)
-	dataset.py
-	yolo_v8.py
-	qt_main.ui
-	training.py
-	visualization.py
-	summary.py
-	class_ind_pair.pkl
+```bash
+├── GUI.py (Run to generate GUI)
+├── main.py (Run to train model)
+├── dataset.py
+├── qt_main.ui
+├── training.py
+├── visualization.py
+├── class_ind_pair.pkl
+├── nets
+    ├── nn.py
+    ├── summary.py
+```
 
 ### Dataset Structure:
 ```bash
