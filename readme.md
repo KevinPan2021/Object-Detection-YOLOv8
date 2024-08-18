@@ -20,7 +20,6 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 	conda install -c conda-forge lightning==2.3.2
 	conda install -c conda-forge albumentations==1.3.1
 	conda install -c conda-forge pycocotools==2.0.8
-	conda install -c conda-forge torchmetrics
 
 ### Code Structure:
 ```bash
