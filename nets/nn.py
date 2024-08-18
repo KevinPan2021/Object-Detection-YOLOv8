@@ -5,7 +5,7 @@ import time
 import torchvision
 import numpy as np
 
-from summary import Summary
+from nets.summary import Summary
 
 
 class ComputeLoss:
