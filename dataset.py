@@ -219,7 +219,7 @@ class Albumentations:
             # Convert the image to PyTorch tensor 
             ToTensorV2() 
         ], album.BboxParams(format="coco", label_fields=[]))
-        
+        # coco format = [x_min, y_min, width, height]
             
             
     def __call__(self, image, label):

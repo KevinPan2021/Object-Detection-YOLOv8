@@ -71,7 +71,7 @@ class QT_Action(QMainWindow):
     # choosing between models
     def load_model_action(self,):
         # load the model architechture
-        self.model = YOLO(size='m', num_classes=len(self.class_labels))
+        self.model = YOLO(size='s', num_classes=len(self.class_labels))
         
         # loading the training model weights
         self.model.load_state_dict(torch.load(self.model.name() + '.pth'))

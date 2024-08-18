@@ -3,10 +3,10 @@ from torch.utils.data import DataLoader
 import pickle
 from torch.cuda.amp import autocast
 
-from yolo_v8 import YOLO, non_max_suppression, xy2wh
+from nets.nn import YOLO, non_max_suppression, xy2wh
 from dataset import YOLO_Dataset
 from visualization import plot_image, plot_images
-from training import model_training 
+from training import model_training
 
 
 
@@ -40,6 +40,11 @@ class BidirectionalMap:
         return self.value_to_key.get(value)
 
 
+# the official model from ultralytics is in .pt format, convert it to .pth
+def convert_pt_to_pth(path):
+    model = torch.load(path, map_location='cpu')['model'].float()
+    model.half()
+    torch.save(model.state_dict(), path.split('/')[-1] + 'h')
 
 
 # model inference
@@ -55,10 +60,10 @@ def inference(model, img):
     
     with autocast(dtype=torch.float16):
         _, box = model(img)
-
+    
     # apply nms
     # pred shape -> batch_size * torch.Size([(num_bbox, 6)])
-    pred = non_max_suppression(box, 0.2, 0.65)[0]
+    pred = non_max_suppression(box, 0.4, 0.65)[0]
     # convert from xyxy to xywh
     pred = pred.cpu().numpy()
     pred = xy2wh(pred)
@@ -150,16 +155,20 @@ def main():
         persistent_workers=True, shuffle=False, collate_fn=YOLO_Dataset.collate_fn
     )  
     
-    # create model 
-    model = YOLO(size='s', num_classes=len(class_labels))
+    # converting the pretrain .pt model to .pth
+    #convert_pt_to_pth('../pretrained_models/YOLO_v8/v8_m.pt')
+    
+    model = YOLO(size='n', num_classes=len(class_labels))
     model = model.to(compute_device())
     
     # model training
     model_training(train_loader, val_loader, model)
     
     # load the best model
-    model.load_state_dict(torch.load(model.name() + '.pth'))
-
+    #model.load_state_dict(torch.load(model.name() + '.pth'))
+    # load the converted official model
+    #model.load_state_dict(torch.load(f'v8_{model.size}.pth')) 
+    
     # inference using validation dataset
     for i in range(0, len(valid_dataset), len(valid_dataset)//6):
         # extract x, y
@@ -170,8 +179,6 @@ def main():
         
         # Plotting the image with the bounding boxes 
         plot_images(image.permute(1,2,0), target, pred, class_labels)
-        
-        
     
 if __name__ == "__main__": 
     main()
