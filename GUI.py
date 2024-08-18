@@ -15,7 +15,7 @@ from PIL import Image
 import cv2
 import pickle
 
-from yolo_v8 import YOLO
+from nets.nn import YOLO
 from main import BidirectionalMap, compute_device, inference
 
 
