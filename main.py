@@ -2,9 +2,12 @@ import torch
 from torch.utils.data import DataLoader
 import pickle
 from torch.cuda.amp import autocast
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'nets'))
 
-from nets.nn import YOLO, non_max_suppression, xy2wh
-from dataset import YOLO_Dataset
+from nn import YOLO, non_max_suppression, xy2wh
+from dataset import Object_Detection_Dataset
 from visualization import plot_image, plot_images
 from training import model_training
 
@@ -108,7 +111,7 @@ def main():
         pickle.dump(class_labels, f)
     
     # Creating train dataset object 
-    train_dataset = YOLO_Dataset( 
+    train_dataset = Object_Detection_Dataset( 
         image_dir = data_path + "train2017/",
         label_dir = data_path + "annotations_trainval2017/instances_train2017.json",
         class_labels_map = class_labels,
@@ -117,7 +120,7 @@ def main():
     )
     
     # Creating valid dataset object
-    valid_dataset = YOLO_Dataset( 
+    valid_dataset = Object_Detection_Dataset( 
         image_dir = data_path + "val2017/",
         label_dir = data_path + "annotations_trainval2017/instances_val2017.json", 
         class_labels_map = class_labels,
@@ -147,18 +150,18 @@ def main():
     # Create data loaders for training and validation sets
     train_loader = DataLoader(
         train_dataset, batch_size=16, num_workers=4, pin_memory=True,
-        persistent_workers=True, shuffle=True, collate_fn=YOLO_Dataset.collate_fn
+        persistent_workers=True, shuffle=True, collate_fn=Object_Detection_Dataset.collate_fn
     )
 
     val_loader = DataLoader(
         valid_dataset, batch_size=32, num_workers=4, pin_memory=True,
-        persistent_workers=True, shuffle=False, collate_fn=YOLO_Dataset.collate_fn
+        persistent_workers=True, shuffle=False, collate_fn=Object_Detection_Dataset.collate_fn
     )  
     
     # converting the pretrain .pt model to .pth
     #convert_pt_to_pth('../pretrained_models/YOLO_v8/v8_m.pt')
     
-    model = YOLO(size='n', num_classes=len(class_labels))
+    model = YOLO(size='m', num_classes=len(class_labels))
     model = model.to(compute_device())
     
     # model training
@@ -179,6 +182,7 @@ def main():
         
         # Plotting the image with the bounding boxes 
         plot_images(image.permute(1,2,0), target, pred, class_labels)
+    
     
 if __name__ == "__main__": 
     main()
