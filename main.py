@@ -4,10 +4,13 @@ import pickle
 from torch.cuda.amp import autocast
 import sys
 import os
+import random
+import numpy as np
+import matplotlib.pyplot as plt
 sys.path.append(os.path.join(os.path.dirname(__file__), 'nets'))
 
 from nn import YOLO, non_max_suppression, xy2wh
-from dataset import Object_Detection_Dataset
+from dataset import Detection_Dataset
 from visualization import plot_image, plot_images
 from training import model_training
 
@@ -20,6 +23,26 @@ def compute_device():
         return 'mps'
     else:
         return 'cpu'
+    
+
+
+# get the keypoint and skeleton color
+def get_color(num):
+    # Getting the color map from matplotlib 
+    colour_map = plt.get_cmap("tab20b") 
+    # Getting 20 different colors from the color map for 20 different classes 
+    colors = [colour_map(i) for i in np.linspace(0, 1, num)] 
+    
+    return colors
+
+
+# Setup random seed.
+def setup_seed():
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
     
     
 
@@ -83,6 +106,8 @@ def inference(model, img):
     
 
 def main():    
+    setup_seed()
+    
     data_path = '../Datasets/MS-COCO/'
     
     image_size = 640
@@ -109,9 +134,10 @@ def main():
     # Save the instance to a pickle file
     with open("class_ind_pair.pkl", "wb") as f:
         pickle.dump(class_labels, f)
+    colors = get_color(len(class_labels))
     
     # Creating train dataset object 
-    train_dataset = Object_Detection_Dataset( 
+    train_dataset = Detection_Dataset( 
         image_dir = data_path + "train2017/",
         label_dir = data_path + "annotations_trainval2017/instances_train2017.json",
         class_labels_map = class_labels,
@@ -120,7 +146,7 @@ def main():
     )
     
     # Creating valid dataset object
-    valid_dataset = Object_Detection_Dataset( 
+    valid_dataset = Detection_Dataset( 
         image_dir = data_path + "val2017/",
         label_dir = data_path + "annotations_trainval2017/instances_val2017.json", 
         class_labels_map = class_labels,
@@ -128,14 +154,14 @@ def main():
         input_size = image_size
     )
     
-    
+    '''
     # visualize some train examples (with augmentation)
     for i in range(0, len(train_dataset), len(train_dataset)//6):
         # extract x, y
         image, target = train_dataset[i]
         
         # Plotting the image with the bounding boxes 
-        plot_image(image.permute(1,2,0), target, class_labels)
+        plot_image(image.permute(1,2,0), target, class_labels, colors)
         
     
     # visualize some valid examples (without augmentation)
@@ -144,24 +170,25 @@ def main():
         image, target = valid_dataset[i]
         
         # Plotting the image with the bounding boxes 
-        plot_image(image.permute(1,2,0), target, class_labels)
+        plot_image(image.permute(1,2,0), target, class_labels, colors)
     
-    
+    return
+    '''
     # Create data loaders for training and validation sets
     train_loader = DataLoader(
-        train_dataset, batch_size=16, num_workers=4, pin_memory=True,
-        persistent_workers=True, shuffle=True, collate_fn=Object_Detection_Dataset.collate_fn
+        train_dataset, batch_size=32, num_workers=4, pin_memory=True,
+        persistent_workers=True, shuffle=True, collate_fn=Detection_Dataset.collate_fn
     )
 
     val_loader = DataLoader(
-        valid_dataset, batch_size=32, num_workers=4, pin_memory=True,
-        persistent_workers=True, shuffle=False, collate_fn=Object_Detection_Dataset.collate_fn
+        valid_dataset, batch_size=64, num_workers=4, pin_memory=True,
+        persistent_workers=True, shuffle=False, collate_fn=Detection_Dataset.collate_fn
     )  
     
     # converting the pretrain .pt model to .pth
     #convert_pt_to_pth('../pretrained_models/YOLO_v8/v8_m.pt')
     
-    model = YOLO(size='m', num_classes=len(class_labels))
+    model = YOLO(size='n', num_classes=len(class_labels))
     model = model.to(compute_device())
     
     # model training
@@ -170,7 +197,7 @@ def main():
     # load the best model
     #model.load_state_dict(torch.load(model.name() + '.pth'))
     # load the converted official model
-    #model.load_state_dict(torch.load(f'v8_{model.size}.pth')) 
+    model.load_state_dict(torch.load(f'v8_{model.size}.pth')) 
     
     # inference using validation dataset
     for i in range(0, len(valid_dataset), len(valid_dataset)//6):
@@ -181,7 +208,7 @@ def main():
         pred = inference(model, image)
         
         # Plotting the image with the bounding boxes 
-        plot_images(image.permute(1,2,0), target, pred, class_labels)
+        plot_images(image.permute(1,2,0), target, pred, class_labels, colors)
     
     
 if __name__ == "__main__": 
