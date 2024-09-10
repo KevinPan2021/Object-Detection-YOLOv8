@@ -33,7 +33,7 @@ This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-C
 ├── class_ind_pair.pkl
 ├── nets
     ├── nn.py
-       ├── loss.py
+    ├── loss.py
     ├── summary.py
 ```
 
