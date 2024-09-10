@@ -1,6 +1,7 @@
 # Object Detection with YOLOv8 and PyTorch
 
 This project aims to perform Object Detection using YOLOv8 with the PyTorch MS-COCO dataset (GUI included).
+![Object Detection](external/GUI.png)
 
 ### Dataset: 
 [MS-COCO](https://cocodataset.org/#download)
